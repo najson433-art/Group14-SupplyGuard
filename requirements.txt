@@ -1,0 +1,4 @@
+# SupplyGuard Python sample
+requests>=2.20
+urllib3==1.25.8
+certifi~=2024.2

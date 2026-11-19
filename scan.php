@@ -1,0 +1,20 @@
+<?php
+require_once __DIR__.'/../includes/bootstrap.php';require_once __DIR__.'/../includes/scan_service.php';require_once __DIR__.'/../includes/view_helpers.php';require_login();
+if($_SERVER['REQUEST_METHOD']==='POST'){
+    require_developer();verify_csrf();$fileId=(int)($_POST['file_id']??0);
+    $q=$pdo->prepare('SELECT project_id FROM dependency_files WHERE file_id=?');$q->execute([$fileId]);$projectId=(int)$q->fetchColumn();
+    if(!$projectId){http_response_code(404);exit('Manifest not found.');}
+    try{$result=scan_manifest($pdo,$projectId,$fileId);flash('success',"Assessment completed: {$result['dependencies']} dependencies checked and {$result['findings']} findings returned by OSV.");}
+    catch(Throwable $ex){flash('danger','Assessment rolled back: '.$ex->getMessage());}
+    go('project.php?id='.$projectId);
+}
+$scanId=(int)($_GET['id']??0);if(!$scanId){http_response_code(404);exit('Scan run not specified.');}
+$record=require_scan_access($pdo,$scanId);$projectId=(int)$record['project_id'];$scannedAt=$record['scanned_at'];
+$anchor=run_anchor($pdo,$projectId,$scannedAt)??$scanId;$run=latest_run_for_project($pdo,$projectId);$compliance=compliance_for_scan($pdo,$projectId,['scanned_at'=>$scannedAt]);
+$rows=run_dependencies($pdo,$projectId,$scannedAt);$admin=current_user()['role']==='admin';
+page_header('Scan Details');?>
+<div class="page-heading"><div><span class="eyebrow">SCAN RUN #<?=e($anchor)?></span><h1><?=e($record['project_name'])?></h1><p><?=e($scannedAt)?> · <?=count(array_unique(array_filter(array_column($rows,'dependency_id'))))?> dependencies assessed<?php if($admin):?> · Owner: <?=e($record['owner'])?><?php endif;?></p></div><div class="d-flex gap-2"><?php if(!$admin):?><form method="post" action="<?=e(url('report.php'))?>" class="d-inline"><?=csrf_field()?> <input type="hidden" name="scan_id" value="<?=$anchor?>"><button class="btn btn-outline-primary">Generate report</button></form><?php endif;?><a class="btn btn-light" href="<?=e(url('monitoring.php'))?>">Back</a></div></div>
+<div class="row g-3 mb-4"><div class="col-md-3"><div class="stat-card"><div class="stat-label">Findings</div><div class="stat-value"><?=count(array_filter($rows,fn($r)=>$r['status']==='vulnerable'))?></div></div></div><div class="col-md-3"><div class="stat-card"><div class="stat-label">Compliance</div><div class="mt-2"><?=compliance_badge($compliance['status'])?></div></div></div><div class="col-md-3"><div class="stat-card"><div class="stat-label">Assessment date</div><div class="fw-semibold mt-2"><?=e($scannedAt)?></div></div></div><div class="col-md-3"><div class="stat-card"><div class="stat-label">Dependencies</div><div class="stat-value"><?=count(array_unique(array_filter(array_column($rows,'dependency_id'))))?></div></div></div></div>
+<div class="card"><div class="card-header"><strong>Dependency assessment results</strong><span class="small text-secondary">Vulnerable dependencies appear first</span></div><div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Package</th><th>Declared version</th><th>OSV ID / CVE</th><th>Severity / Result</th><th>Reference</th></tr></thead><tbody>
+<?php foreach($rows as $r):?><tr><td><strong><?=e($r['name']??'Unavailable')?></strong><div class="small text-secondary"><?=e($r['ecosystem']??'')?></div></td><td><?=displayed_version((string)($r['version']??''),(string)($r['ecosystem']??''))?></td><td><?php if($r['status']==='vulnerable'):?><strong><?=e($r['osv_id'])?></strong><div class="small text-secondary"><?=e($r['cve_id']??'No CVE supplied')?></div><?php else:?>—<?php endif;?></td><td><?=$r['status']==='vulnerable'?severity_badge($r['severity']??'unclassified'):'<span class="badge text-bg-success">No known vulnerability</span>'?></td><td><?php if($r['reference_url']):?><a href="<?=e($r['reference_url'])?>" target="_blank" rel="noopener">Open</a><?php else:?>—<?php endif;?></td></tr><?php endforeach;?><?php if(!$rows):?><tr><td colspan="5" class="empty-state">No dependencies were assessed in this run.</td></tr><?php endif;?></tbody></table></div></div>
+<?php require APP_ROOT.'/includes/footer.php';?>

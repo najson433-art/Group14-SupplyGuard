@@ -1,0 +1,12 @@
+
+{
+  "name": "hospital-management-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hospital Management System for patient registration, appointments, medical records and billing.",
+  "dependencies": {
+    "axios": "0.21.1",
+    "express": "4.17.1",
+    "lodash": "4.17.20"
+  }
+}
